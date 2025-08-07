@@ -56,6 +56,25 @@ else{
     
 }#else validate module
 
+function DisplayStart-Sleep ($totalSeconds)
+{
+
+$currentSecond = $totalSeconds
+
+while ($currentSecond -gt 0) {
+    
+    Write-Host "Script is running. Wait $currentSecond more seconds..." -ForegroundColor White -BackgroundColor DarkGreen
+    
+    Start-Sleep -Seconds 1 # Pause for 1 second
+    
+    $currentSecond--
+    }
+
+Write-Host "Countdown complete! Let's continue..." -ForegroundColor White -BackgroundColor DarkBlue
+
+}#end of Function Display Start-Sleep
+
+
 #Get Encryted Password to Connect to ESXi
 $rootUser = "root"
 
@@ -218,7 +237,7 @@ foreach ($vCServerName in $vCServerList)
                 
                     Start-VMHostService -HostService $sshServiceObj -Confirm:$false -Verbose
                     
-                    Start-Sleep -Seconds 10
+                    DisplayStart-Sleep -totalSeconds 10
 
                     Write-Host ("Host: $esxiHostName. SSH Service is starting")
 
