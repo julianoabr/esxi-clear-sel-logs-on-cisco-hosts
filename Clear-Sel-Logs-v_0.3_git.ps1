@@ -26,7 +26,7 @@ CHANGED BY:
 .AUTHOR
    Juliano Alves de Brito Ribeiro (Find me at: julianoalvesbr@live.com or https://github.com/JULIANOABR or https://twitter.com/powershell_tips)
 .VERSION
-   v.0.3
+   v.0.4
 .ENVIRONMENT
    PRODUCTION
 .TOTHINK
@@ -40,7 +40,7 @@ Clear-Host
 
 Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -Confirm:$false -Verbose
 
-Disconnect-VIServer -Server * -Confirm:$false -Force -Verbose -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+Disconnect-VIServer -Server * -Confirm:$false -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
 
 #VALIDATE MODULE
 $moduleExists = Get-Module -Name Vmware.VimAutomation.Core
@@ -56,16 +56,9 @@ else{
     
 }#else validate module
 
-$todayDate = (Get-date -Format 'ddMMyyyy-HHmm').ToString()
-
-$outputFilePath = "$env:SystemDrive:\TEMP\SSH_FAIL"
-
-$fileName = "SSH_FAIL-$todayDate-ESXi-HOSTS.txt"
-
 #Get Encryted Password to Connect to ESXi
 $rootUser = "root"
 
-#YOU MUST USE A SCRIPT CALLED ENCRYPT_PWD.ps1 in this repository to encrypt password first. Your encrypted password only work on same machine that you encrypted it.
 $MainPWD = (Get-content "$env:SystemDrive:\TEMP\PWD\ENCRYPT\root-encryptedpwd.txt") | ConvertTo-SecureString 
 
 #Root Password = ConvertTo-SecureString -string $encrypted 
@@ -93,34 +86,43 @@ $vcServerList = @()
 #ADD OR REMOVE vCenter Servers according to your environment   
 $vcServerList = ('SERVER1','SERVER2','SERVER3','SERVER4','SERVER5','SERVER6','SERVER7') | Sort-Object
 
+[System.String]$vcTcpPort = '443'
+
 foreach ($vCServerName in $vCServerList)
 {
     
-    Connect-VIServer -Server $vCServerName -Port 443 -Credential $vCenterCred -Verbose 
+    $resultTestNetConnection = Test-NetConnection -ComputerName $vcServerName -Port $vcTcpPort -Verbose
 
-    $esxiHostList = @()
+    if ($resultTestNetConnection.TcpTestSucceeded -eq $false){
+    
+        Write-Host "vCenter: $vcServerName probably is down. Please check it" -ForegroundColor White -BackgroundColor Red        
+    
+    }#end of check connection with vCenter
+    else{
+    
+        Connect-VIServer -Server $vCServerName -Port 443 -Credential $vCenterCred -Verbose 
 
-    $esxiHostList = Get-VMHost -State Connected | Select-Object -ExpandProperty Name | Sort-Object
+        $esxiHostList = @()
 
-
-    foreach ($esxiHostName in $esxiHostList)
-    {
+        $esxiHostList = (Get-VMHost | Where-Object -FilterScript {($PSItem.ConnectionState -eq 'Connected' -or $PSItem.ConnectionState -eq 'Maintenance') -and ($PSItem.PowerState -eq 'PoweredOn')} | Select-Object -ExpandProperty Name | Sort-Object)  
+        
+        foreach ($esxiHostName in $esxiHostList){
            
-     $esxiHostObj = Get-VMHost -Name $esxiHostName -Verbose
+            $esxiHostObj = Get-VMHost -Name $esxiHostName -Verbose
 
-     $error.Clear()
+            $error.Clear()
 
-     $manufacturer = $esxiHostObj.Manufacturer
+            $manufacturer = $esxiHostObj.Manufacturer
 
-         if ($manufacturer -like 'Cisco*'){
+            if ($manufacturer -like 'Cisco*'){
      
-            $mgmtInterface = $esxiHostObj.NetworkInfo.VirtualNic | Where-Object -FilterScript {$_.Name -eq "vmk0"}       
+                $mgmtInterface = $esxiHostObj.NetworkInfo.VirtualNic | Where-Object -FilterScript {$_.Name -eq "vmk0"}       
             
-            $mgmtInterfaceIP = $mgmtInterface.IP
+                $mgmtInterfaceIP = $mgmtInterface.IP
 
-            $sshServiceObj = Get-VmHostService -VMHost $esxiHostObj | Where { $_.Key -eq “TSM-SSH”}
+                $sshServiceObj = Get-VmHostService -VMHost $esxiHostObj | Where { $_.Key -eq “TSM-SSH”}
 
-            if ($sshServiceObj.Running -eq $true){
+                if ($sshServiceObj.Running -eq $true){
                 
                     Write-Host ("Host: $esxiHostName. SSH Service is already running") -ForegroundColor White -BackgroundColor DarkCyan
 
@@ -298,16 +300,18 @@ foreach ($vCServerName in $vCServerList)
                 }#else validate ssh status
                   
      
-         }#end of validate if this Server is a CISCO Systems Inc.
-         else{
+            }#end of validate if this Server is a CISCO Systems Inc.
+            else{
      
-            Write-Host "Host: $esxiHostName. Manufacturer: $manufacturer. It does not have SEL LOGS" -ForegroundColor White -BackgroundColor Red
+                Write-Host "Host: $esxiHostName. Manufacturer: $manufacturer. It does not have SEL LOGS" -ForegroundColor White -BackgroundColor Red
      
-         }#end of else validate it is a CISCO SYSTEMS Inc.
+            }#end of else validate it is a CISCO SYSTEMS Inc.
         
-    }#End of ForEach Host
+        }#End of ForEach Host
+    
+    }#end of else validate vcenter connectivity
+
 
 }#End of ForEach for vCenter Server
-
 
 Disconnect-VIServer -Server * -Confirm:$false -Force -Verbose -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
